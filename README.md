@@ -1,2 +1,3 @@
 # image-classifier-ai-and-not
-https://www.kaggle.com/datasets/awsaf49/artifact-dataset
+
+https://huggingface.co/datasets/Hemg/AI-Generated-vs-Real-Images-Datasets
