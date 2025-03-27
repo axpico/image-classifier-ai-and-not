@@ -4,10 +4,11 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, models
 import matplotlib.pyplot as plt
-from datasets import load_from_disk
 import numpy as np
 import os
 from PIL import Image
+from datasets import load_dataset
+import shutil
 
 # Define constants
 IMG_HEIGHT = 224
@@ -16,17 +17,40 @@ BATCH_SIZE = 32
 EPOCHS = 10
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Load the dataset
-dataset = load_from_disk("./AI-Generated-vs-Real-Images-Datasets")
+print(f"Using device: {DEVICE}")
+print(f"CUDA Available: {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    print(f"Number of GPUs available: {torch.cuda.device_count()}")
+    print(f"GPU Name: {torch.cuda.get_device_name(0)}")
+
+# Download and load the dataset
+print("Downloading dataset from Hugging Face...")
+dataset = load_dataset("Hemg/AI-Generated-vs-Real-Images-Datasets")
 train_dataset = dataset['train']
 
 # Create directories for organizing data
+temp_data_dir = "./temp_data"
+if os.path.exists(temp_data_dir):
+    shutil.rmtree(temp_data_dir)
+
 os.makedirs("./temp_data/real", exist_ok=True)
 os.makedirs("./temp_data/ai", exist_ok=True)
 
 # Prepare data
+print("Preparing data...")
 for i, item in enumerate(train_dataset):
-    img = Image.fromarray(item['image'])
+    if i % 1000 == 0:
+        print(f"Processing image {i}/{len(train_dataset)}")
+    
+    # Handle the image correctly based on its type
+    if isinstance(item['image'], Image.Image):
+        img = item['image']
+    else:
+        img = Image.fromarray(item['image'])
+    
+    # Convert to RGB mode before saving as JPEG
+    img = img.convert('RGB')
+    
     if item['label'] == 0:  # Real image
         img.save(f"./temp_data/real/img_{i}.jpg")
     else:  # AI-generated image
@@ -76,6 +100,7 @@ class ImageClassificationDataset(Dataset):
         return image, label
 
 # Create datasets and dataloaders
+print("Creating dataloaders...")
 full_dataset = ImageClassificationDataset('./temp_data', train_transform)
 train_size = int(0.8 * len(full_dataset))
 val_size = len(full_dataset) - train_size
@@ -86,39 +111,19 @@ val_dataset.dataset.transform = val_transform
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE)
 
-# Define the model
-class ImageClassifier(nn.Module):
-    def __init__(self):
-        super(ImageClassifier, self).__init__()
-        self.conv1 = nn.Conv2d(3, 16, 3, padding=1)
-        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
-        self.conv3 = nn.Conv2d(32, 64, 3, padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.fc1 = nn.Linear(64 * 28 * 28, 128)
-        self.fc2 = nn.Linear(128, 1)
-        self.relu = nn.ReLU()
-        self.sigmoid = nn.Sigmoid()
-        
-    def forward(self, x):
-        x = self.pool(self.relu(self.conv1(x)))
-        x = self.pool(self.relu(self.conv2(x)))
-        x = self.pool(self.relu(self.conv3(x)))
-        x = x.view(-1, 64 * 28 * 28)
-        x = self.relu(self.fc1(x))
-        x = self.sigmoid(self.fc2(x))
-        return x
+print(f"Dataset size: {len(full_dataset)} images")
+print(f"Training set: {train_size} images")
+print(f"Validation set: {val_size} images")
 
-model = ImageClassifier().to(DEVICE)
+# Use a pre-trained model for better performance
+print("Initializing model...")
+model = models.resnet18(pretrained=True)
+num_ftrs = model.fc.in_features
+model.fc = nn.Linear(num_ftrs, 1)
+# Rimuoviamo il sigmoid dal modello
+model = model.to(DEVICE)
 
-# Alternatively, use a pre-trained model
-# model = models.resnet18(pretrained=True)
-# num_ftrs = model.fc.in_features
-# model.fc = nn.Linear(num_ftrs, 1)
-# model.fc.add_module('sigmoid', nn.Sigmoid())
-# model = model.to(DEVICE)
-
-# Define loss function and optimizer
-criterion = nn.BCELoss()
+criterion = nn.BCEWithLogitsLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 # Training function
@@ -142,7 +147,8 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, epochs):
             optimizer.step()
             
             running_loss += loss.item() * inputs.size(0)
-            predicted = (outputs > 0.5).float()
+            # Applichiamo sigmoid per la predizione
+            predicted = (torch.sigmoid(outputs) > 0.5).float()
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
         
@@ -165,7 +171,8 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, epochs):
                 loss = criterion(outputs, labels)
                 
                 running_loss += loss.item() * inputs.size(0)
-                predicted = (outputs > 0.5).float()
+                # Applichiamo sigmoid per la predizione
+                predicted = (torch.sigmoid(outputs) > 0.5).float()
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
         
@@ -183,6 +190,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, epochs):
     return history
 
 # Train the model
+print("Starting training...")
 history = train_model(model, train_loader, val_loader, criterion, optimizer, EPOCHS)
 
 # Plot training history
@@ -198,10 +206,12 @@ plt.plot(history['train_loss'], label='Training Loss')
 plt.plot(history['val_loss'], label='Validation Loss')
 plt.legend()
 plt.title('Model Loss')
+plt.savefig('training_history.png')
 plt.show()
 
 # Save the model
 torch.save(model.state_dict(), 'real_vs_ai_image_classifier.pth')
+print("Model saved to 'real_vs_ai_image_classifier.pth'")
 
 # Function to predict on new images
 def predict_image(image_path):
@@ -217,12 +227,13 @@ def predict_image(image_path):
     
     with torch.no_grad():
         output = model(image)
-        prediction = output.item()
+        # Applichiamo sigmoid per ottenere una probabilità
+        prediction = torch.sigmoid(output).item()
+        confidence = prediction if prediction > 0.5 else 1 - prediction
     
-    if prediction > 0.5:
-        return "AI-generated image"
-    else:
-        return "Real photo"
+    result = "AI-generated image" if prediction > 0.5 else "Real photo"
+    return result, confidence
 
 # Example usage
-print(predict_image('image.jpg'))
+print("\nTo use the model for prediction, use:")
+print("result, confidence = predict_image('path_to_your_image.jpg')")
