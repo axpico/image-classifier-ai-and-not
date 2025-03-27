@@ -49,9 +49,11 @@ for i, item in enumerate(train_dataset):
         img = Image.fromarray(item['image'])
     
     # Convert to RGB mode before saving as JPEG
+    if img.mode == 'P' and 'transparency' in img.info:
+        img = img.convert('RGBA')
     img = img.convert('RGB')
     
-    if item['label'] == 0:  # Real image
+    if item['label'] == 1:  # Real image
         img.save(f"./temp_data/real/img_{i}.jpg")
     else:  # AI-generated image
         img.save(f"./temp_data/ai/img_{i}.jpg")
@@ -76,7 +78,7 @@ class ImageClassificationDataset(Dataset):
     def __init__(self, root_dir, transform=None):
         self.root_dir = root_dir
         self.transform = transform
-        self.classes = ['real', 'ai']
+        self.classes = ['ai', 'real']
         self.class_to_idx = {cls: i for i, cls in enumerate(self.classes)}
         
         self.samples = []
@@ -117,10 +119,10 @@ print(f"Validation set: {val_size} images")
 
 # Use a pre-trained model for better performance
 print("Initializing model...")
-model = models.resnet18(pretrained=True)
+model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
 num_ftrs = model.fc.in_features
 model.fc = nn.Linear(num_ftrs, 1)
-# Rimuoviamo il sigmoid dal modello
+# Remove sigmoid from model
 model = model.to(DEVICE)
 
 criterion = nn.BCEWithLogitsLoss()
@@ -147,7 +149,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, epochs):
             optimizer.step()
             
             running_loss += loss.item() * inputs.size(0)
-            # Applichiamo sigmoid per la predizione
+            # Apply sigmoid for prediction
             predicted = (torch.sigmoid(outputs) > 0.5).float()
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
@@ -171,7 +173,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, epochs):
                 loss = criterion(outputs, labels)
                 
                 running_loss += loss.item() * inputs.size(0)
-                # Applichiamo sigmoid per la predizione
+                # Apply sigmoid for prediction
                 predicted = (torch.sigmoid(outputs) > 0.5).float()
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
@@ -227,7 +229,7 @@ def predict_image(image_path):
     
     with torch.no_grad():
         output = model(image)
-        # Applichiamo sigmoid per ottenere una probabilità
+        # Apply sigmoid to get probability
         prediction = torch.sigmoid(output).item()
         confidence = prediction if prediction > 0.5 else 1 - prediction
     
