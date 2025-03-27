@@ -13,8 +13,8 @@ import shutil
 # Define constants
 IMG_HEIGHT = 224
 IMG_WIDTH = 224
-BATCH_SIZE = 32
-EPOCHS = 10
+BATCH_SIZE = 64
+EPOCHS = 1
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 print(f"Using device: {DEVICE}")
@@ -130,16 +130,21 @@ optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 # Training function
 def train_model(model, train_loader, val_loader, criterion, optimizer, epochs):
+    print("Starting training function...")
     history = {'train_loss': [], 'train_acc': [], 'val_loss': [], 'val_acc': []}
     
     for epoch in range(epochs):
+        print(f"Starting epoch {epoch+1}/{epochs}")
         # Training phase
         model.train()
         running_loss = 0.0
         correct = 0
         total = 0
         
-        for inputs, labels in train_loader:
+        for i, (inputs, labels) in enumerate(train_loader):
+            if i % 10 == 0:
+                print(f"  Training batch {i}/{len(train_loader)}")
+            
             inputs, labels = inputs.to(DEVICE), labels.float().to(DEVICE).view(-1, 1)
             
             optimizer.zero_grad()
@@ -149,16 +154,19 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, epochs):
             optimizer.step()
             
             running_loss += loss.item() * inputs.size(0)
-            # Apply sigmoid for prediction
             predicted = (torch.sigmoid(outputs) > 0.5).float()
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
+            
+        print(f"Finished training for epoch {epoch+1}")
         
+        # Calculate training metrics
         epoch_loss = running_loss / len(train_loader.dataset)
         epoch_acc = correct / total
         history['train_loss'].append(epoch_loss)
         history['train_acc'].append(epoch_acc)
         
+        print(f"Starting validation for epoch {epoch+1}")
         # Validation phase
         model.eval()
         running_loss = 0.0
@@ -166,18 +174,21 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, epochs):
         total = 0
         
         with torch.no_grad():
-            for inputs, labels in val_loader:
+            for i, (inputs, labels) in enumerate(val_loader):
+                if i % 10 == 0:
+                    print(f"  Validation batch {i}/{len(val_loader)}")
+                
                 inputs, labels = inputs.to(DEVICE), labels.float().to(DEVICE).view(-1, 1)
                 
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
                 
                 running_loss += loss.item() * inputs.size(0)
-                # Apply sigmoid for prediction
                 predicted = (torch.sigmoid(outputs) > 0.5).float()
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
         
+        # Calculate validation metrics
         epoch_loss = running_loss / len(val_loader.dataset)
         epoch_acc = correct / total
         history['val_loss'].append(epoch_loss)
