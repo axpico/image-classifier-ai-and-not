@@ -2,12 +2,30 @@ import tensorflow as tf
 from tensorflow.keras import layers, models
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import matplotlib.pyplot as plt
+from datasets import load_from_disk
+import numpy as np
+import os
 
 # Define constants
 IMG_HEIGHT = 224
 IMG_WIDTH = 224
 BATCH_SIZE = 32
 EPOCHS = 10
+
+# Load the dataset
+dataset = load_from_disk("./AI-Generated-vs-Real-Images-Datasets")
+train_dataset = dataset['train']
+
+# Create directories for ImageDataGenerator
+os.makedirs("./temp_data/real", exist_ok=True)
+os.makedirs("./temp_data/ai", exist_ok=True)
+
+# Prepare data for ImageDataGenerator
+for i, item in enumerate(train_dataset):
+    if item['label'] == 0:  # Real image
+        tf.keras.utils.save_img(f"./temp_data/real/img_{i}.jpg", item['image'])
+    else:  # AI-generated image
+        tf.keras.utils.save_img(f"./temp_data/ai/img_{i}.jpg", item['image'])
 
 # Define data generators
 train_datagen = ImageDataGenerator(
@@ -21,7 +39,7 @@ train_datagen = ImageDataGenerator(
 
 # Load and prepare the training dataset
 train_generator = train_datagen.flow_from_directory(
-    'path/to/train/directory',
+    './temp_data',
     target_size=(IMG_HEIGHT, IMG_WIDTH),
     batch_size=BATCH_SIZE,
     class_mode='binary',
@@ -29,7 +47,7 @@ train_generator = train_datagen.flow_from_directory(
 )
 
 validation_generator = train_datagen.flow_from_directory(
-    'path/to/train/directory',
+    './temp_data',
     target_size=(IMG_HEIGHT, IMG_WIDTH),
     batch_size=BATCH_SIZE,
     class_mode='binary',
