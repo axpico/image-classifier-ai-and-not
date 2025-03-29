@@ -14,7 +14,7 @@ import shutil
 IMG_HEIGHT = 224
 IMG_WIDTH = 224
 BATCH_SIZE = 64
-EPOCHS = 1
+EPOCHS = 10
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 print(f"Using device: {DEVICE}")
@@ -248,5 +248,5 @@ def predict_image(image_path):
     return result, confidence
 
 # Example usage
-print("\nTo use the model for prediction, use:")
-print("result, confidence = predict_image('path_to_your_image.jpg')")
+confidence = predict_image('image.jpg')
+print(f"\nresult: {confidence}")
